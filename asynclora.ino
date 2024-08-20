@@ -7,6 +7,19 @@
 const char* ssid = "D-Link_DIR-615";
 const char* password = "68053222";
 
+unsigned long previousMillis = 0;
+unsigned long interval = 30000;
+
+
+// it wil set the static IP address to 192, 168, 1, 184
+IPAddress local_IP(192, 168, 1, 184);
+//it wil set the gateway static IP address to 192, 168, 1,1
+IPAddress gateway(192, 168, 1, 1);
+
+// Following three settings are optional
+IPAddress subnet(255, 255, 0, 0);
+IPAddress primaryDNS(8, 8, 8, 8); 
+IPAddress secondaryDNS(8, 8, 4, 4);
 // LoRa Settings
 #define SS 5
 #define RST 14
@@ -21,13 +34,26 @@ String dataToSend = "";
 // HTML form to input data
 const char index_html[] PROGMEM = R"rawliteral(
 <!DOCTYPE HTML><html><body>
-<form action="/get">
   Data to send:<br>
-  <button id="bt1">Light</button>
-  <button id="bt2">Fan</button>
-   <input type="text" name="data">
-  <input type="submit" value="Send">
-</form>
+  <button onclick="sendData('light')">Light</button><br>
+  <button onclick="sendData('fan')">Fan</button><br>
+  
+  <script>
+    function sendData(value) {
+      var xhr = new XMLHttpRequest();
+      xhr.open("GET", "/get?data=" + value, true);
+      xhr.onload = function() {
+        if (xhr.status == 200) {
+          console.log("Data sent: " + value);
+          
+        }
+      };
+      xhr.onerror = function() {
+        console.error("Request failed");
+      };
+      xhr.send();
+    }
+  </script>
 </body></html>)rawliteral";
 
 void setup() {
@@ -40,15 +66,27 @@ void setup() {
     Serial.println("Starting LoRa failed!");
     while (1);
   }
-  
+
+  if (!WiFi.config(local_IP, gateway, subnet, primaryDNS, secondaryDNS)) {
+Serial.println("STA Failed to configure");
+}
   // Initialize WiFi
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
-    Serial.println("Connecting to WiFi...");
-  }
-  Serial.println("Connected to WiFi");
-  Serial.println(WiFi.localIP());
+// Connect to Wi-Fi network with SSID and password
+Serial.print("Connecting to ");
+Serial.println(ssid);
+WiFi.begin(ssid, password);
+while (WiFi.status() != WL_CONNECTED) {
+delay(500);
+Serial.print(".");
+}
+// Print local IP address and start web server
+Serial.println("");
+Serial.println("WiFi connected.");
+Serial.println("IP address: ");
+Serial.println(WiFi.localIP());
+
+
+
   // Serve the HTML form
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send_P(200, "text/html", index_html);
@@ -66,9 +104,7 @@ void setup() {
       LoRa.endPacket();
 
       // request->send(200, "text/plain", "Data sent over LoRa: " + dataToSend);
-    } else {
-      request->send(200, "text/plain", "No data received");
-    }
+    } 
   });
 
   // Start server
@@ -77,4 +113,15 @@ void setup() {
 
 void loop() {
   // Nothing here, handled by async server
+setup();
+ 
+unsigned long currentMillis = millis();
+//// if WiFi is down, try reconnecting
+if ((WiFi.status() != WL_CONNECTED) && (currentMillis - previousMillis >=interval)) {
+  Serial.print(millis());
+  Serial.println("Reconnecting to WiFi...");
+  WiFi.disconnect();
+  WiFi.reconnect();
+  previousMillis = currentMillis;
+}
 }
